@@ -7,8 +7,7 @@ import glob
 
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Conv2D, Activation, MaxPooling2D, Flatten
-
+from keras.layers import Dense, Dropout
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -41,7 +40,7 @@ def create_all_data():
             data[index].append([0, 0, 0])
     return data
 
-
+#creates all labels
 def create_labels():
     labels = []
     label_names = [f for f in os.listdir("HMP_Dataset")]
@@ -68,16 +67,19 @@ def create_onehot_labels(labels):
     return onehot_labels
 
 
+# stratifies into training and test set
 def stratify(features, labels):
     x_train, x_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, shuffle=True, stratify=labels)
     return x_train, x_test, y_train, y_test
 
 
+# creates numpy onehot version of labels
 def create_np_labels():
     np_labels = create_onehot_labels(create_labels())
     return np_labels
 
 
+# creates numpy version of features
 def create_np_data(one_d, two_d, three_d):
     pd_data = pd.DataFrame(create_all_data()).values
     np_data = np.zeros((one_d, two_d, three_d))
@@ -89,6 +91,13 @@ def create_np_data(one_d, two_d, three_d):
     return np_data
 
 
+# creates a numpy array of features
+def create_np_data_array():
+    np_data = array(create_all_data())
+    return np_data
+
+
+# exports set training, validation, and test data to files
 def create_np_csv(two_d):
     #two_d max is 9318
     np_data = create_np_data(850, two_d, 3)
@@ -103,52 +112,38 @@ def create_np_csv(two_d):
     np.savetxt('y_val', y_val, delimiter=',', fmt='%0.0f')
 
 
-# need window and more knowledge on how cnn works before implementing this
-def create_cnn(size, num_cnn_layers):
-    num_filters = 32
-    kernel = (3,3)
-    max_neurons = 64
-    model = Sequential()
-    for i in range(1, num_cnn_layers+1):
-        if i == 1:
-            model.add(Conv2D(num_filters*i, kernel, input_shape=size, activation='relu', padding='same'))
-        else:
-            model.add(Conv2D(num_filters * i, kernel, activation='relu', padding='same'))
-    model.add(MaxPooling2D(pool_size=(2,2)))
-    model.add(Flatten())
-    model.add(Dense(int(max_neurons), activation='relu'))
-    model.add(Dropout(0.25))
-    model.add(Dense(int(max_neurons/2), activation='relu'))
-    model.add(Dense(14, activation='softmax'))
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    return model
-
-
+# creates fnn model and trains it on inputted data
 def create_fnn(x_train, y_train, input_dim, epochs):
     #input_dim is 27954
     model = Sequential()
     model.add(Dense(units=64, activation='relu', input_dim=input_dim))
     model.add(Dense(units=64, activation='relu'))
-    #model.add(Dropout(0.5))
+    model.add(Dropout(0.2))
     model.add(Dense(units=14, activation='softmax'))
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    model.fit(x_train, y_train, epochs=epochs)
+    model.fit(x_train, y_train, epochs=epochs, batch_size=32)
     return model
 
 
-def cross_val_fnn(x_train, y_train):
+# performs n fold cross validation
+def cross_val_fnn(x_train, y_train, x_test, y_test):
     model_list = []
     accuracy = []
     highest_accuracy = 0
     average_accuracy = 0
+    train_accuracy = 0
     best_model = None
-    n_folds = 10
+    n_folds = 3
     print("======================================================================================")
     for i in range(n_folds):
         print("Training on Fold: ", i + 1)
         x_t, x_val, y_t, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=np.random.randint(1, 1000, 1)[0])
-        model = create_fnn(x_t, y_t, 27954, 200)
-        score, accuracy_t = model.evaluate(x_t, y_t)
+        model = create_fnn(x_t, y_t, 27954, 1000)
+        score_train, accuracy_train = model.evaluate(x_t, y_t)
+        print("Train Score: " + str(score_train))
+        print("Train Accuracy: " + str(accuracy_train))
+        print()
+        score, accuracy_t = model.evaluate(x_val, y_val)
         print("Val Score: " +str(score))
         print("Val Accuracy: " +str(accuracy_t))
         print()
@@ -164,6 +159,7 @@ def cross_val_fnn(x_train, y_train):
     return best_model, highest_accuracy, average_accuracy
 
 
+# reads training, validation, and test data from csv data
 x_train = pd.read_csv('x_train', header=None).values
 y_train = pd.read_csv('y_train', header=None).values
 x_val = pd.read_csv('x_val', header=None).values
@@ -171,10 +167,12 @@ y_val = pd.read_csv('y_val', header=None).values
 x_test = pd.read_csv('x_test', header=None).values
 y_test = pd.read_csv('y_test', header=None).values
 
+
+# run machine learning problem
 sess = tf.Session()
 
-best_mod, high_acc, avg_acc = cross_val_fnn(x_train, y_train)
+best_mod, high_acc, avg_acc = cross_val_fnn(x_train, y_train, x_test, y_test)
 print(best_mod)
-print("Highest Training Accuracy: "+str(high_acc))
-print("Average Training Accuracy: "+str(avg_acc))
+print("Highest Validation Accuracy: "+str(high_acc))
+print("Average Validation Accuracy: "+str(avg_acc))
 sess.close()
